@@ -8,9 +8,10 @@
 // IMPORTANT: the exact headless invocation is still to be confirmed against
 // the Muse Code documentation. The args template is fully configurable
 // in Settings; its default is a placeholder, not a documented fact.
-// This adapter never fakes a run: a missing binary or a non-zero exit makes
-// the caller fall back to demo output, labeled as such.
+// This adapter never fakes a run: a missing binary or a non-zero exit is
+// reported to the caller, which marks the task FAILED with the real reason.
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const settings = require('../settings');
@@ -18,11 +19,23 @@ const settings = require('../settings');
 const WORK_ROOT = process.env.AI_COMPANY_WORKDIRS || path.join(__dirname, '..', '..', 'data', 'workdirs');
 const TIMEOUT_MS = Number(process.env.MUSE_CODE_TIMEOUT_MS || 120000);
 
+// Search dirs: the process PATH plus ~/.local/bin, where the official
+// installer puts the `muse` binary. The server process PATH often lacks it.
+function searchDirs() {
+  const dirs = (process.env.PATH || '').split(path.delimiter).filter(Boolean);
+  const local = path.join(os.homedir(), '.local', 'bin');
+  if (!dirs.includes(local)) dirs.push(local);
+  return dirs;
+}
+
+function augmentedPath() {
+  return searchDirs().join(path.delimiter);
+}
+
 function binaryExists(cmd) {
   if (!cmd) return false;
   if (cmd.includes('/')) { try { fs.accessSync(cmd, fs.constants.X_OK); return true; } catch (e) { return false; } }
-  const dirs = (process.env.PATH || '').split(path.delimiter);
-  for (const d of dirs) {
+  for (const d of searchDirs()) {
     try { fs.accessSync(path.join(d, cmd), fs.constants.X_OK); return true; } catch (e) { /* keep looking */ }
   }
   return false;
@@ -36,7 +49,7 @@ function splitArgs(template, prompt) {
 function run(cmd, args, cwd) {
   return new Promise(resolve => {
     let out = '', err = '', done = false;
-    const child = spawn(cmd, args, { cwd, shell: false });
+    const child = spawn(cmd, args, { cwd, shell: false, env: Object.assign({}, process.env, { PATH: augmentedPath() }) });
     const timer = setTimeout(() => { if (!done) { done = true; child.kill('SIGKILL'); resolve({ code: -1, out, err: err + '\nTimed out after ' + TIMEOUT_MS + 'ms' }); } }, TIMEOUT_MS);
     child.stdout.on('data', d => { out += d; });
     child.stderr.on('data', d => { err += d; });
@@ -65,7 +78,7 @@ function parseUsage(out) {
 async function runTask({ task, missionText }) {
   const s = settings.loadSecrets();
   if (!s.museCodeEnabled) return { available: false, reason: 'Muse Code is disabled in Settings' };
-  if (!binaryExists(s.museCodeCmd)) return { available: false, reason: 'binary not found on PATH: ' + s.museCodeCmd };
+  if (!binaryExists(s.museCodeCmd)) return { available: false, reason: 'binary not found on PATH or in ~/.local/bin: ' + s.museCodeCmd };
   const workdir = path.join(WORK_ROOT, task.id);
   fs.mkdirSync(workdir, { recursive: true });
   const prompt = 'Mission: ' + missionText + '\nTask: ' + task.title + '\nBrief: ' + task.brief + '\nAcceptance: ' + task.acceptance + '\nWork in this directory and print the result to stdout.';

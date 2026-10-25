@@ -114,6 +114,6 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  const live = models.isLive();
-  console.log('Agent Company listening on http://localhost:' + PORT + ' - ' + (live ? 'LIVE MODE (Meta Model API key configured)' : 'DEMO MODE (simulated agents, no Meta Model API key configured)'));
+  const live = models.hasKey();
+  console.log('Agent Company listening on http://localhost:' + PORT + ' - ' + (live ? 'Live (Meta Model API key configured)' : 'No API key configured. Add one in Settings. Missions and the CEO cycle will refuse to run.'));
 });

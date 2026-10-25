@@ -81,18 +81,21 @@ function getOrCreateWorker(roleName, model, runtime) {
 async function runMission(missionText) {
   const s = store.load();
   if (!s.company) throw new Error('Create the company first (POST /api/company).');
+  if (!models.hasKey()) throw new Error(models.NO_KEY_ERROR);
   const bal = store.balance();
   if (bal <= 0) throw new Error('Budget is $0. Only revenue proposals are allowed.');
   const { mode } = store.strategyMode();
   if (mode === 'Critical') throw new Error('Critical budget mode: normal missions are stopped. Run a revenue task first.');
 
-  const mission = { id: store.nextId('mission'), text: missionText, status: 'running', createdAt: new Date().toISOString(), totalCost: 0, totalTokens: 0 };
-  s.missions.unshift(mission);
   const ceo = s.agents.find(a => a.id === s.company.ceoAgentId);
   ceo.status = 'Splitting a mission';
   store.logActivity('CEO is splitting the mission: "' + missionText + '"');
 
+  // Decompose before any mission or task record exists. If the model call
+  // fails, the error propagates and nothing is created.
   const dec = await models.decompose(missionText, s.company.goal);
+  const mission = { id: store.nextId('mission'), text: missionText, status: 'running', createdAt: new Date().toISOString(), totalCost: 0, totalTokens: 0, failedTasks: 0 };
+  s.missions.unshift(mission);
   const decCost = store.debitModelCall({ agentId: ceo.id, label: 'CEO decomposition: ' + missionText, model: 'wonder', tokensIn: dec.tokensIn, tokensOut: dec.tokensOut });
   mission.totalCost += decCost; mission.totalTokens += dec.tokensIn + dec.tokensOut;
 
@@ -114,7 +117,7 @@ async function runMission(missionText) {
     id: store.nextId('task'), missionId: mission.id, title: t.title, role: t.role, model: t.model === 'spark' ? 'spark' : 'wonder',
     runtime: t.runtime === 'muse-code' ? 'muse-code' : 'model-api',
     brief: t.brief, acceptance: t.acceptance, needsApproval: !!t.needsApproval,
-    status: 'queued', agentId: null, output: '', tokens: 0, cost: 0, degraded: false, runtimeNote: ''
+    status: 'queued', agentId: null, output: '', tokens: 0, cost: 0, runtimeNote: ''
   }));
   // Survival downgrade: fewer workers, light tasks on Spark (FR-9).
   if (mode === 'Survival') for (const t of taskObjs) if (t.role !== 'Verifier') t.model = 'spark';
@@ -148,9 +151,10 @@ async function runOneTask(mission, task, worker) {
   task.status = 'running'; worker.status = 'Working: ' + task.title;
   store.save();
   let cost = 0;
-  if (task.runtime === 'muse-code') {
-    const mc = await museCode.runTask({ task, missionText: mission.text });
-    if (mc.available) {
+  try {
+    if (task.runtime === 'muse-code') {
+      const mc = await museCode.runTask({ task, missionText: mission.text });
+      if (!mc.available) throw new Error('Muse run failed: ' + mc.reason);
       task.output = mc.output;
       task.tokens = mc.tokensIn + mc.tokensOut;
       if (mc.costMode === 'reported' && mc.costUsd != null) {
@@ -163,20 +167,23 @@ async function runOneTask(mission, task, worker) {
         task.tokens = mc.tokensIn + mc.tokensOut;
         task.runtimeNote = 'Muse ran this task. Cost is a flat estimate from Settings, because the tool reported no usage.';
       }
-      task.degraded = false;
     } else {
-      // Never fake a real run: fall back to demo output and label the worker.
-      const out = '[Muse Code unavailable - demo output]\nReason: ' + mc.reason + '\n\n' + models.demoWork(task, mission.text);
-      task.output = out;
-      task.tokens = 260 + Math.ceil(task.brief.length / 4) + Math.ceil(out.length / 4);
-      cost = store.debitModelCall({ agentId: worker.id, label: 'Task (demo fallback, Muse unavailable): ' + task.title, model: 'spark', tokensIn: 300, tokensOut: Math.ceil(out.length / 4) });
-      task.degraded = true;
-      task.runtimeNote = 'Muse Code unavailable - demo output. Reason: ' + mc.reason;
+      const r = await models.doWork(task, mission.text, s.company.goal);
+      cost = store.debitModelCall({ agentId: worker.id, label: 'Task: ' + task.title, model: task.model, tokensIn: r.tokensIn, tokensOut: r.tokensOut });
+      task.output = r.output; task.tokens = r.tokensIn + r.tokensOut;
     }
-  } else {
-    const r = await models.doWork(task, mission.text, s.company.goal);
-    cost = store.debitModelCall({ agentId: worker.id, label: 'Task: ' + task.title, model: task.model, tokensIn: r.tokensIn, tokensOut: r.tokensOut });
-    task.output = r.output; task.tokens = r.tokensIn + r.tokensOut; task.degraded = !!r.degraded;
+  } catch (e) {
+    // No fallback output exists. The task fails with the real reason stored on it.
+    const reason = String(e.message || e);
+    task.status = 'failed';
+    task.output = 'Task failed: ' + reason;
+    task.runtimeNote = 'FAILED: ' + reason;
+    task.cost = 0;
+    worker.status = 'Idle';
+    mission.failedTasks = (mission.failedTasks || 0) + 1;
+    store.logActivity(worker.name + ' failed "' + task.title + '": ' + reason);
+    store.save();
+    return;
   }
   task.cost = cost; task.status = 'done';
   worker.tasksDone += 1; worker.status = 'Idle';
@@ -186,11 +193,13 @@ async function runOneTask(mission, task, worker) {
 }
 
 function finishMission(mission) {
-  mission.status = 'done'; mission.finishedAt = new Date().toISOString();
+  const failed = mission.failedTasks || 0;
+  mission.status = failed ? 'done_with_failures' : 'done';
+  mission.finishedAt = new Date().toISOString();
   const s = store.load();
   const ceo = s.agents.find(a => a.id === s.company.ceoAgentId);
   if (ceo) ceo.status = 'Watching budget and backlog';
-  store.logActivity('Mission done: "' + mission.text + '" Total cost $' + mission.totalCost.toFixed(2) + '.');
+  store.logActivity('Mission ' + (failed ? 'finished with ' + failed + ' failed task(s)' : 'done') + ': "' + mission.text + '" Total cost $' + mission.totalCost.toFixed(2) + '.');
   rerank('mission finished');
   store.save();
 }
@@ -210,7 +219,7 @@ async function decideApproval(id, decision) {
       task.agentId = worker.id;
       store.save();
       await runOneTask(mission, task, worker);
-      const rest = s.tasks.filter(t => t.missionId === mission.id && t.status !== 'done');
+      const rest = s.tasks.filter(t => t.missionId === mission.id && t.status !== 'done' && t.status !== 'failed');
       if (!rest.length) finishMission(mission);
     } else if (task && mission) {
       task.status = 'blocked'; mission.status = 'blocked';
@@ -227,8 +236,8 @@ async function decideApproval(id, decision) {
 }
 
 function spend(amount, label) {
-  store.addLedger({ kind: 'manual', label: label || 'Simulated spend', amount: -Math.abs(Number(amount)) });
-  store.logActivity('Spend recorded: $' + Math.abs(Number(amount)).toFixed(2) + ' - ' + (label || 'simulated') + '.');
+  store.addLedger({ kind: 'manual', label: label || 'Manual expense', amount: -Math.abs(Number(amount)) });
+  store.logActivity('Manual expense recorded: $' + Math.abs(Number(amount)).toFixed(2) + ' - ' + (label || 'manual expense') + '.');
   rerank('budget changed');
   store.save();
 }
@@ -243,6 +252,7 @@ function revenue(amount, label) {
 async function ceoCycle() {
   const s = store.load();
   if (!s.company) throw new Error('Create the company first.');
+  if (!models.hasKey()) throw new Error(models.NO_KEY_ERROR);
   if (s.config.proactivity === 'off') { store.logActivity('CEO cycle skipped: proactivity is off.'); store.save(); return { ran: false }; }
   const { mode, pct } = store.strategyMode();
   store.logActivity('CEO cycle: budget $' + store.balance().toFixed(2) + ' (' + pct.toFixed(0) + '%, ' + mode + '). Scanning backlog and opportunities.');
@@ -277,7 +287,7 @@ function board() {
   const burnPerHour = spentLastHour;
   const runwayHours = burnPerHour > 0 ? bal / burnPerHour : null;
   return {
-    liveMode: models.isLive(),
+    keyConfigured: models.hasKey(),
     company: s.company, config: s.config,
     budget: { balance: Math.round(bal * 1000) / 1000, pct: Math.round(pct * 10) / 10, mode, burnPerHour: Math.round(burnPerHour * 1000) / 1000, runwayHours: runwayHours == null ? null : Math.round(runwayHours * 10) / 10 },
     agents: s.agents, missions: s.missions, tasks: s.tasks, approvals: s.approvals,

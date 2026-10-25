@@ -51,7 +51,7 @@
       <strong>Budget</strong>
       <div id="budgetBar" style="margin:8px 0"></div>
       <div class="row">
-        <div class="col"><label>Simulate spend (USD)</label><input id="spendAmt" type="number" value="3" step="0.5"><button class="ghost" id="spendBtn">Simulate spend</button></div>
+        <div class="col"><label>Record manual expense (USD). This is a bookkeeping entry in the ledger, not an agent run.</label><input id="spendAmt" type="number" value="3" step="0.5"><button class="ghost" id="spendBtn">Record manual expense</button></div>
         <div class="col"><label>Mark revenue received (USD)</label><input id="revAmt" type="number" value="49" step="1"><button class="ghost" id="revBtn">Mark revenue</button></div>
         <div class="col"><label>CEO loop</label><br><button id="cycleBtn">Run CEO cycle</button></div>
       </div>
@@ -85,7 +85,7 @@
       <div class="board" id="board"></div>
     </div>
 
-    <div class="card">
+    <div class="card" id="settingsCard">
       <strong>Settings</strong>
       <p><small>Keys are stored server-side only, in a gitignored secrets file with 600 permissions. The API never returns the full key. After save you see a masked value with the last 4 characters. That mask proves a key is saved, without showing it.</small></p>
       <label>Meta Model API key (leave empty to keep the saved key)</label>
@@ -128,8 +128,8 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&am
 async function refresh() {
   const b = await api('GET', '/api/board');
   const banner = $('modeBanner');
-  if (b.liveMode) { banner.className = 'banner live'; banner.textContent = 'LIVE MODE - agents run on the Meta Model API.'; }
-  else { banner.className = 'banner'; banner.textContent = 'DEMO MODE - simulated agents. No Meta Model API key is configured. Outputs are simulated and labeled.'; }
+  if (b.keyConfigured) { banner.className = 'banner live'; banner.textContent = 'Live - agents run on the Meta Model API.'; }
+  else { banner.className = 'banner'; banner.innerHTML = 'No API key configured. Missions and the CEO cycle are disabled until a key is saved. <a href="#settingsCard" style="color:#ffe9a8">Add one in Settings</a>.'; }
   if (!b.company) { $('setupCard').classList.remove('hidden'); $('main').classList.add('hidden'); return; }
   $('setupCard').classList.add('hidden'); $('main').classList.remove('hidden');
   const ceo = b.agents.find(a => a.kind === 'ceo') || {};
@@ -143,7 +143,7 @@ async function refresh() {
   $('pq').innerHTML = b.priorityQueue.map((it, i) => '<div class="task ' + (it.kind === 'revenue' ? 'rev' : '') + '"><strong>#' + (i + 1) + ' ' + esc(it.title) + '</strong> <span class="pill">score ' + it.score + '</span><br><small>Value ' + it.value + ' · Urgency ' + it.urgency + ' · Revenue ' + money(it.revenue) + ' · Est. cost ' + money(it.estCost) + ' · ' + esc(it.status) + '</small></div>').join('') || '<small>Queue is empty.</small>';
   $('activity').innerHTML = b.activity.map(a => '<div><small>' + esc(new Date(a.at).toLocaleTimeString()) + '</small> ' + esc(a.text) + '</div>').join('') || '<small>No activity yet.</small>';
   $('roster').innerHTML = b.agents.map(a => '<tr><td>' + esc(a.name) + '</td><td>' + esc(a.role) + '</td><td>' + esc(a.agentType) + '</td><td>' + esc(a.runtime || 'model-api') + (a.runtime === 'muse-code' ? '' : '') + '</td><td>' + esc(a.status) + '</td><td>' + (a.tasksDone || 0) + '</td><td>' + money(a.spend) + '</td></tr>').join('');
-  const cols = [['Backlog', ['queued']], ['Assigned', ['assigned']], ['In Progress', ['running']], ['Blocked / Approval', ['blocked', 'waiting_approval']], ['Done', ['done']]];
+  const cols = [['Backlog', ['queued']], ['Assigned', ['assigned']], ['In Progress', ['running']], ['Blocked / Failed / Approval', ['blocked', 'failed', 'waiting_approval']], ['Done', ['done']]];
   $('board').innerHTML = cols.map(([name, sts]) => '<div class="bcol"><strong>' + name + '</strong>' + b.tasks.filter(t => sts.includes(t.status)).map(t => {
     const ag = b.agents.find(a => a.id === t.agentId);
     return '<div class="task"><strong>' + esc(t.title) + '</strong><br><small>' + esc(ag ? ag.name : 'unassigned') + ' · runtime: ' + esc(t.runtime) + ' · ' + money(t.cost) + '</small>' + (t.runtimeNote ? '<br><small>' + esc(t.runtimeNote) + '</small>' : '') + (t.output ? '<pre>' + esc(t.output) + '</pre>' : '') + '</div>';
@@ -152,7 +152,7 @@ async function refresh() {
 
 async function loadSettings() {
   const s = await api('GET', '/api/settings');
-  $('keyState').innerHTML = s.metaApiKeyConfigured ? '<small>Saved key: ' + esc(s.metaApiKeyMasked) + ' (masked: only the last 4 characters are ever shown)</small>' : '<small>No key saved. The app runs in demo mode.</small>';
+  $('keyState').innerHTML = s.metaApiKeyConfigured ? '<small>Saved key: ' + esc(s.metaApiKeyMasked) + ' (masked: only the last 4 characters are ever shown)</small>' : '<small>No key saved. The app cannot run missions or the CEO cycle until a key is added.</small>';
   $('setBase').value = s.metaApiBase || '';
   $('setMcEnabled').checked = !!s.museCodeEnabled;
   $('setMcCmd').value = s.museCodeCmd || '';
@@ -176,7 +176,7 @@ $('missionBtn').onclick = async () => {
   $('missionMsg').textContent = r.error ? 'Error: ' + r.error : (r.needsBudgetApproval ? 'Over the per-mission cap. Approve it in Approvals.' : 'Mission done or waiting at the approval gate. See the board.');
   refresh();
 };
-$('spendBtn').onclick = async () => { await api('POST', '/api/spend', { amount: Number($('spendAmt').value), label: 'Simulated spend from the UI' }); refresh(); };
+$('spendBtn').onclick = async () => { await api('POST', '/api/spend', { amount: Number($('spendAmt').value), label: 'Manual expense recorded in the UI' }); refresh(); };
 $('revBtn').onclick = async () => { await api('POST', '/api/revenue', { amount: Number($('revAmt').value), label: 'Revenue marked in the UI' }); refresh(); };
 $('cycleBtn').onclick = async () => { await api('POST', '/api/ceo-cycle', {}); refresh(); };
 $('testModelBtn').onclick = async () => { $('testModelOut').textContent = 'Testing...'; const r = await api('POST', '/api/settings/test', { target: 'model' }); $('testModelOut').textContent = (r.ok ? 'OK. ' : 'Failed. ') + r.checked.join(' '); };
