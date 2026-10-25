@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Company</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; background: #0f1220; color: #e8eaf2; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 18px; }
+  .card { background: #171b30; border: 1px solid #262c4a; border-radius: 10px; padding: 14px; margin-bottom: 14px; }
+  .row { display: flex; gap: 14px; flex-wrap: wrap; }
+  .col { flex: 1; min-width: 300px; }
+  input, select, textarea { background: #0d1020; color: #e8eaf2; border: 1px solid #333a5e; border-radius: 6px; padding: 8px; width: 100%; box-sizing: border-box; margin: 4px 0 10px; }
+  button { background: #3b6fe0; color: #fff; border: 0; border-radius: 6px; padding: 8px 14px; cursor: pointer; }
+  button.ghost { background: #262c4a; }
+  button.warn { background: #a33; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  td, th { border-bottom: 1px solid #262c4a; padding: 6px; text-align: left; vertical-align: top; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; background: #262c4a; }
+  .Growth { background: #1d5c38; } .Normal { background: #6b5a1d; } .Survival { background: #8a4a12; } .Critical { background: #8a1d1d; }
+  .rev { border-left: 4px solid #e0a83b; }
+  .board { display: flex; gap: 10px; overflow-x: auto; }
+  .bcol { min-width: 200px; flex: 1; background: #12162a; border-radius: 8px; padding: 8px; }
+  .task { background: #1c2138; border-radius: 8px; padding: 8px; margin-bottom: 8px; font-size: 13px; }
+  .task pre { white-space: pre-wrap; font-size: 11px; color: #aab; max-height: 140px; overflow: auto; }
+  .banner { background: #6b5a1d; color: #ffe9a8; padding: 8px 12px; border-radius: 8px; margin-bottom: 12px; }
+  .live { background: #1d5c38; color: #c8ffd9; }
+  small { color: #9aa3c0; }
+  label { font-size: 13px; color: #c6cbdf; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Agent Company</h1>
+  <div id="modeBanner" class="banner">Loading...</div>
+
+  <div id="setupCard" class="card hidden">
+    <h2>Set up your CEO agent</h2>
+    <label>CEO name</label><input id="ceoName" value="Muse">
+    <label>Company name (optional)</label><input id="companyName" placeholder="My AI Company">
+    <label>Company goal, one sentence</label><input id="goal" placeholder="e.g. Ship small digital products that earn their keep">
+    <label>Initial budget (USD)</label><input id="initBudget" type="number" value="20" step="1" min="1">
+    <button id="createBtn">Create CEO</button>
+  </div>
+
+  <div id="main" class="hidden">
+    <div class="card" id="ceoCard"></div>
+
+    <div class="card">
+      <strong>Budget</strong>
+      <div id="budgetBar" style="margin:8px 0"></div>
+      <div class="row">
+        <div class="col"><label>Simulate spend (USD)</label><input id="spendAmt" type="number" value="3" step="0.5"><button class="ghost" id="spendBtn">Simulate spend</button></div>
+        <div class="col"><label>Mark revenue received (USD)</label><input id="revAmt" type="number" value="49" step="1"><button class="ghost" id="revBtn">Mark revenue</button></div>
+        <div class="col"><label>CEO loop</label><br><button id="cycleBtn">Run CEO cycle</button></div>
+      </div>
+      <div id="ledgerList"></div>
+    </div>
+
+    <div class="card">
+      <strong>Give your CEO a mission</strong>
+      <input id="missionText" placeholder="e.g. Research competitors for a habit tracker app and write a brief">
+      <button id="missionBtn">Send to CEO</button>
+      <span id="missionMsg"></span>
+    </div>
+
+    <div class="card" id="approvalsCard">
+      <strong>Approvals</strong>
+      <div id="approvals"></div>
+    </div>
+
+    <div class="row">
+      <div class="col card"><strong>Priority queue</strong><div id="pq"></div></div>
+      <div class="col card"><strong>CEO activity</strong><div id="activity"></div></div>
+    </div>
+
+    <div class="card">
+      <strong>Employees</strong>
+      <table><thead><tr><th>Name</th><th>Role</th><th>Agent type</th><th>Runtime</th><th>Status</th><th>Done</th><th>Spend</th></tr></thead><tbody id="roster"></tbody></table>
+    </div>
+
+    <div class="card">
+      <strong>Task board</strong>
+      <div class="board" id="board"></div>
+    </div>
+
+    <div class="card">
+      <strong>Settings</strong>
+      <p><small>Keys are stored server-side only, in a gitignored secrets file with 600 permissions. The API never returns the full key. After save you see a masked value with the last 4 characters. That mask proves a key is saved, without showing it.</small></p>
+      <label>Meta Model API key (leave empty to keep the saved key)</label>
+      <input id="setKey" type="password" placeholder="Paste key here">
+      <div id="keyState"></div>
+      <label>Meta Model API base URL</label><input id="setBase">
+      <button id="testModelBtn" class="ghost">Test connection: model API</button> <span id="testModelOut"></span>
+      <hr>
+      <label><input type="checkbox" id="setMcEnabled" style="width:auto"> Enable Muse</label>
+      <label>Muse command</label><input id="setMcCmd">
+      <label>Args template. {prompt} is replaced with the task brief. Placeholder default: confirm the exact invocation against Muse Code docs.</label><input id="setMcArgs">
+      <label>Version or no-op arg for the test button (optional, e.g. --version). Empty means the test only checks the binary exists.</label><input id="setMcVer">
+      <label>Flat estimate tokens in / out, used when Muse reports no usage</label>
+      <div class="row"><div class="col"><input id="setMcIn" type="number"></div><div class="col"><input id="setMcOut" type="number"></div></div>
+      <button id="testMcBtn" class="ghost">Test connection: Muse</button> <span id="testMcOut"></span>
+      <hr>
+      <label>Budget: initial balance (USD)</label><input id="cfgInit" type="number" step="1">
+      <label>Budget: per-mission cap percent</label><input id="cfgCap" type="number" step="1">
+      <label>Budget: mode thresholds, balance percent floors for Growth / Normal / Survival</label>
+      <div class="row"><div class="col"><input id="cfgG" type="number"></div><div class="col"><input id="cfgN" type="number"></div><div class="col"><input id="cfgS" type="number"></div></div>
+      <label>Proactivity: off, suggest, or auto. Auto runs queue items under the threshold without asking.</label>
+      <select id="cfgPro"><option value="off">off</option><option value="suggest">suggest</option><option value="auto">auto</option></select>
+      <label>Auto-run threshold (USD)</label><input id="cfgThr" type="number" step="0.1">
+      <label>Model prices, USD per 1k tokens: Wonder in / out, Spark in / out</label>
+      <div class="row"><div class="col"><input id="cfgWi" type="number" step="0.0001"></div><div class="col"><input id="cfgWo" type="number" step="0.0001"></div><div class="col"><input id="cfgSi" type="number" step="0.0001"></div><div class="col"><input id="cfgSo" type="number" step="0.0001"></div></div>
+      <button id="saveSettingsBtn">Save settings</button> <span id="saveMsg"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const money = n => '$' + Number(n || 0).toFixed(2);
+async function api(method, path, body) {
+  const r = await fetch(path, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  return r.json();
+}
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+async function refresh() {
+  const b = await api('GET', '/api/board');
+  const banner = $('modeBanner');
+  if (b.liveMode) { banner.className = 'banner live'; banner.textContent = 'LIVE MODE - agents run on the Meta Model API.'; }
+  else { banner.className = 'banner'; banner.textContent = 'DEMO MODE - simulated agents. No Meta Model API key is configured. Outputs are simulated and labeled.'; }
+  if (!b.company) { $('setupCard').classList.remove('hidden'); $('main').classList.add('hidden'); return; }
+  $('setupCard').classList.add('hidden'); $('main').classList.remove('hidden');
+  const ceo = b.agents.find(a => a.kind === 'ceo') || {};
+  $('ceoCard').innerHTML = '<strong>' + esc(b.company.name) + '</strong> &nbsp;<span class="pill ' + b.budget.mode + '">STRATEGY: ' + b.budget.mode + '</span>' +
+    '<div>CEO: <strong>' + esc(ceo.name || '') + '</strong> (' + esc(ceo.agentType || '') + ', runtime: ' + esc(ceo.runtime || 'model-api') + ')</div>' +
+    '<div>Goal: ' + esc(b.company.goal) + '</div><div>Now: ' + esc(ceo.status || '') + '</div>';
+  $('budgetBar').innerHTML = 'Balance: <strong>' + money(b.budget.balance) + '</strong> (' + b.budget.pct + '% of initial) &nbsp; Burn last hour: ' + money(b.budget.burnPerHour) + ' &nbsp; Runway: ' + (b.budget.runwayHours == null ? 'no burn yet' : b.budget.runwayHours + ' h at current burn') + ' &nbsp; Mode: <span class="pill ' + b.budget.mode + '">' + b.budget.mode + '</span>';
+  $('ledgerList').innerHTML = '<small>Ledger, newest first:</small>' + b.ledger.map(e => '<div><small>' + esc(new Date(e.at).toLocaleTimeString()) + '</small> ' + esc(e.label || e.kind) + ' <strong>' + (e.amount >= 0 ? '+' : '') + money(e.amount) + '</strong></div>').join('');
+  const pend = b.approvals.filter(a => a.status === 'pending');
+  $('approvals').innerHTML = pend.length ? pend.map(a => '<div class="task ' + (a.kind === 'revenue' ? 'rev' : '') + '">' + esc(a.title) + '<br><button onclick="decide(\'' + a.id + '\',\'approve\')">Approve</button> <button class="warn" onclick="decide(\'' + a.id + '\',\'reject\')">Reject</button></div>').join('') : '<small>No pending approvals.</small>';
+  $('pq').innerHTML = b.priorityQueue.map((it, i) => '<div class="task ' + (it.kind === 'revenue' ? 'rev' : '') + '"><strong>#' + (i + 1) + ' ' + esc(it.title) + '</strong> <span class="pill">score ' + it.score + '</span><br><small>Value ' + it.value + ' · Urgency ' + it.urgency + ' · Revenue ' + money(it.revenue) + ' · Est. cost ' + money(it.estCost) + ' · ' + esc(it.status) + '</small></div>').join('') || '<small>Queue is empty.</small>';
+  $('activity').innerHTML = b.activity.map(a => '<div><small>' + esc(new Date(a.at).toLocaleTimeString()) + '</small> ' + esc(a.text) + '</div>').join('') || '<small>No activity yet.</small>';
+  $('roster').innerHTML = b.agents.map(a => '<tr><td>' + esc(a.name) + '</td><td>' + esc(a.role) + '</td><td>' + esc(a.agentType) + '</td><td>' + esc(a.runtime || 'model-api') + (a.runtime === 'muse-code' ? '' : '') + '</td><td>' + esc(a.status) + '</td><td>' + (a.tasksDone || 0) + '</td><td>' + money(a.spend) + '</td></tr>').join('');
+  const cols = [['Backlog', ['queued']], ['Assigned', ['assigned']], ['In Progress', ['running']], ['Blocked / Approval', ['blocked', 'waiting_approval']], ['Done', ['done']]];
+  $('board').innerHTML = cols.map(([name, sts]) => '<div class="bcol"><strong>' + name + '</strong>' + b.tasks.filter(t => sts.includes(t.status)).map(t => {
+    const ag = b.agents.find(a => a.id === t.agentId);
+    return '<div class="task"><strong>' + esc(t.title) + '</strong><br><small>' + esc(ag ? ag.name : 'unassigned') + ' · runtime: ' + esc(t.runtime) + ' · ' + money(t.cost) + '</small>' + (t.runtimeNote ? '<br><small>' + esc(t.runtimeNote) + '</small>' : '') + (t.output ? '<pre>' + esc(t.output) + '</pre>' : '') + '</div>';
+  }).join('') + '</div>').join('');
+}
+
+async function loadSettings() {
+  const s = await api('GET', '/api/settings');
+  $('keyState').innerHTML = s.metaApiKeyConfigured ? '<small>Saved key: ' + esc(s.metaApiKeyMasked) + ' (masked: only the last 4 characters are ever shown)</small>' : '<small>No key saved. The app runs in demo mode.</small>';
+  $('setBase').value = s.metaApiBase || '';
+  $('setMcEnabled').checked = !!s.museCodeEnabled;
+  $('setMcCmd').value = s.museCodeCmd || '';
+  $('setMcArgs').value = s.museCodeArgs || '';
+  $('setMcVer').value = s.museCodeVersionArg || '';
+  $('setMcIn').value = s.museCodeFlatTokensIn; $('setMcOut').value = s.museCodeFlatTokensOut;
+  const c = s.budget;
+  $('cfgInit').value = c.initialBalance; $('cfgCap').value = c.perMissionCapPercent;
+  $('cfgG').value = c.modes.growth; $('cfgN').value = c.modes.normal; $('cfgS').value = c.modes.survival;
+  $('cfgPro').value = c.proactivity; $('cfgThr').value = c.approvalThresholdUsd;
+  $('cfgWi').value = c.prices.wonder.in; $('cfgWo').value = c.prices.wonder.out; $('cfgSi').value = c.prices.spark.in; $('cfgSo').value = c.prices.spark.out;
+}
+
+window.decide = async (id, d) => { await api('POST', '/api/approvals/' + id, { decision: d }); refresh(); };
+$('createBtn').onclick = async () => {
+  await api('POST', '/api/company', { ceoName: $('ceoName').value, companyName: $('companyName').value, goal: $('goal').value, initialBalance: Number($('initBudget').value) });
+  refresh();
+};
+$('missionBtn').onclick = async () => {
+  const r = await api('POST', '/api/mission', { text: $('missionText').value });
+  $('missionMsg').textContent = r.error ? 'Error: ' + r.error : (r.needsBudgetApproval ? 'Over the per-mission cap. Approve it in Approvals.' : 'Mission done or waiting at the approval gate. See the board.');
+  refresh();
+};
+$('spendBtn').onclick = async () => { await api('POST', '/api/spend', { amount: Number($('spendAmt').value), label: 'Simulated spend from the UI' }); refresh(); };
+$('revBtn').onclick = async () => { await api('POST', '/api/revenue', { amount: Number($('revAmt').value), label: 'Revenue marked in the UI' }); refresh(); };
+$('cycleBtn').onclick = async () => { await api('POST', '/api/ceo-cycle', {}); refresh(); };
+$('testModelBtn').onclick = async () => { $('testModelOut').textContent = 'Testing...'; const r = await api('POST', '/api/settings/test', { target: 'model' }); $('testModelOut').textContent = (r.ok ? 'OK. ' : 'Failed. ') + r.checked.join(' '); };
+$('testMcBtn').onclick = async () => { $('testMcOut').textContent = 'Testing...'; const r = await api('POST', '/api/settings/test', { target: 'muse-code' }); $('testMcOut').textContent = (r.ok ? 'OK. ' : 'Failed. ') + r.checked.join(' '); };
+$('saveSettingsBtn').onclick = async () => {
+  const body = {
+    metaApiBase: $('setBase').value, museCodeEnabled: $('setMcEnabled').checked, museCodeCmd: $('setMcCmd').value,
+    museCodeArgs: $('setMcArgs').value, museCodeVersionArg: $('setMcVer').value,
+    museCodeFlatTokensIn: Number($('setMcIn').value), museCodeFlatTokensOut: Number($('setMcOut').value),
+    budget: {
+      initialBalance: Number($('cfgInit').value), perMissionCapPercent: Number($('cfgCap').value),
+      modes: { growth: Number($('cfgG').value), normal: Number($('cfgN').value), survival: Number($('cfgS').value) },
+      proactivity: $('cfgPro').value, approvalThresholdUsd: Number($('cfgThr').value),
+      prices: { wonder: { in: Number($('cfgWi').value), out: Number($('cfgWo').value) }, spark: { in: Number($('cfgSi').value), out: Number($('cfgSo').value) } }
+    }
+  };
+  const key = $('setKey').value.trim();
+  if (key) body.metaApiKey = key;
+  await api('PUT', '/api/settings', body);
+  $('setKey').value = '';
+  $('saveMsg').textContent = 'Saved.';
+  loadSettings(); refresh();
+};
+
+refresh(); loadSettings();
+setInterval(refresh, 2000);
+</script>
+</body>
+</html>

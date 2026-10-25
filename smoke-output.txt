@@ -1,0 +1,27 @@
+
+> ai-company@0.1.0 smoke
+> node scripts/smoke.js
+
+PASS - server boots
+PASS - company created
+PASS - starts in demo mode
+PASS - budget funded at $20 (balance=20)
+PASS - roster has the CEO with a runtime
+PASS - mission 1 decomposed into tasks (tasks=4)
+PASS - approval gate stops the final step
+PASS - mission 1 done after approval
+PASS - all mission 1 tasks done
+PASS - budget was debited by model calls (balance=19.988)
+PASS - ledger matches the balance
+PASS - CEO tagged coding sub-tasks with runtime muse-code (muse-code tasks=4)
+PASS - Muse absent -> labeled demo fallback, never faked (Muse Code unavailable - demo output. Reason: binary not found on PATH: muse-code-definitely-absent-xyz | Muse Code unavailable - demo output. Reason: binary not found on PATH: muse-code-definitely-absent-xyz | Muse Code unavailable - demo output. Reason: binary not found on PATH: muse-code-definitely-absent-xyz | Muse Code unavailable - demo output. Reason: binary not found on PATH: muse-code-definitely-absent-xyz)
+PASS - roster shows a Muse runtime employee
+PASS - crossed into Survival mode (balance=4.00 pct=20)
+PASS - revenue task is on top of the priority queue (top=Sell: competitor brief for indie game devs)
+PASS - revenue approval was created
+PASS - revenue credits the wallet (balance=53.00)
+PASS - settings reports the key as configured
+PASS - GET settings returns only the masked key (masked=••••••••abcd)
+PASS - secrets file has 600 permissions (mode=600)
+PASS - secrets file is gitignored
+SMOKE OK - all checks passed

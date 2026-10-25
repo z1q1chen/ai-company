@@ -1,0 +1,1 @@
+{"description":"Agent Company: set up one CEO agent, give it a mission, watch it build a team and finish the work inside a real budget.","engines":{"node":">=18"},"name":"ai-company","private":true,"scripts":{"smoke":"node scripts/smoke.js","start":"node src/server.js"},"type":"commonjs","version":"0.1.0"}

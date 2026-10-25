@@ -1,0 +1,6 @@
+node_modules/
+data/store.json
+data/secrets.json
+data/workdirs/
+*.log
+.DS_Store
