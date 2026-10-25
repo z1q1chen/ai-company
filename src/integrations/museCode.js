@@ -1,10 +1,13 @@
 'use strict';
 // Muse Code adapter.
 //
-// IMPORTANT: the exact Muse Code CLI invocation is NOT documented in this
-// environment. The command and args template are fully configurable in
-// Settings. The defaults here are placeholders and must be confirmed against
-// the Muse Code documentation when access is granted at the hackathon.
+// The Muse binary is named `muse`. Install it with the official
+// script: curl -fsSL https://dev.meta.ai/install.sh | bash (lands in
+// ~/.local/bin/muse). Sign-in is separate: browser sign-in, or the
+// META_API_KEY env var for non-interactive use.
+// IMPORTANT: the exact headless invocation is still to be confirmed against
+// the Muse Code documentation. The args template is fully configurable
+// in Settings; its default is a placeholder, not a documented fact.
 // This adapter never fakes a run: a missing binary or a non-zero exit makes
 // the caller fall back to demo output, labeled as such.
 const fs = require('fs');

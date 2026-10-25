@@ -67,14 +67,14 @@ Builder-type sub-tasks (coding work) can run through a Muse adapter instead of t
 Configure it in the **Settings** card, or by env:
 
 1. **Enable toggle**: the Settings checkbox "Enable Muse". Off means builder tasks use the model API path instead.
-2. **Command**: the Settings field "Muse command", env `MUSE_CODE_CMD`, default `muse-code`. The server looks the binary up on PATH.
+2. **Command**: the Settings field "Muse command", env `MUSE_CODE_CMD`, default `muse`. The binary is named `muse`. Install it with the official script: `curl -fsSL https://dev.meta.ai/install.sh | bash` (installs to `~/.local/bin/muse`). The server looks the binary up on PATH. Sign-in is separate from this app: use browser sign-in, or set the `META_API_KEY` env var for non-interactive runs.
 3. **Args template**: the Settings field "Args template". The placeholder `{prompt}` is replaced with the task brief. Example shape: `--print {prompt}`. This is a template, not a fixed command, so you can match your installed version.
 4. **Version or no-op arg**: optional, used only by the Test button. Empty means the test checks binary existence on PATH and runs nothing. Set it, for example to `--version`, if you want the test to also execute the tool once.
 5. **Flat estimate**: Settings fields for flat estimate tokens in and out. When a Muse run reports usage in its output, the ledger records the reported usage. When it reports nothing, the ledger records this flat estimate and the task is labeled as an estimate.
 
 Honest limits, read before you rely on this:
 
-- The exact Muse Code CLI invocation must be confirmed against the Muse Code documentation when access is granted at the hackathon. The defaults in this repo are placeholders to verify, not documented facts.
+- The binary name is confirmed: `muse`, installed via the official script above. The exact headless invocation (args template) is still to be confirmed against the Muse Code documentation. The args default in this repo is a placeholder to verify, not a documented fact. Non-interactive runs use the `META_API_KEY` env var; interactive use signs in through the browser.
 - The adapter spawns the configured command in a per-task working directory under `data/workdirs/<taskId>`, passes the brief through the args template, and captures stdout and stderr as the worker output.
 - If the binary is missing, disabled, or exits non-zero, the task falls back to demo output and the UI labels that worker `Muse Code unavailable - demo output`, with the reason. A real run is never faked.
 - Test it with the **Test connection: Muse** button in Settings. It reports exactly what it checked.

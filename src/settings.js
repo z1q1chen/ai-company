@@ -11,7 +11,7 @@ function defaults() {
     metaApiKey: '',
     metaApiBase: 'https://api.meta.ai/v1',
     museCodeEnabled: true,
-    museCodeCmd: 'muse-code',
+    museCodeCmd: 'muse',
     museCodeArgs: '{prompt}', // args template. {prompt} is replaced with the task brief. PLACEHOLDER: confirm against Muse Code docs.
     museCodeVersionArg: '',    // optional no-op arg for the test button, e.g. '--version'. Empty = existence check only.
     museCodeFlatTokensIn: 4000,  // flat estimate used when Muse Code reports no usage
